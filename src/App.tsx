@@ -1,16 +1,27 @@
+import { BrowserRouter, Route, Routes } from 'react-router'
+import { ScrollToTop } from './components/ScrollToTop'
+import { AdminPanel } from './pages/admin/AdminPanel'
+import { ClientPanel } from './pages/cliente/ClientPanel'
+import { ManagerPanel } from './pages/gestor/ManagerPanel'
+import { Landing } from './pages/Landing'
+import { Login } from './pages/Login'
+import { NotFound } from './pages/NotFound'
+import { Register } from './pages/Register'
+
 function App() {
   return (
-    <main className="min-h-screen bg-emerald-50 flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-        <div className="text-6xl mb-4" aria-hidden="true">
-          🌱
-        </div>
-        <h1 className="text-3xl font-bold text-emerald-700 mb-2">Eco Puntos</h1>
-        <p className="text-gray-600">
-          ¡Bienvenida! Esta es la primera versión de tu aplicación.
-        </p>
-      </div>
-    </main>
+    <BrowserRouter>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/ingresar" element={<Login />} />
+        <Route path="/registro" element={<Register />} />
+        <Route path="/cliente/*" element={<ClientPanel />} />
+        <Route path="/gestor/*" element={<ManagerPanel />} />
+        <Route path="/admin/*" element={<AdminPanel />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
