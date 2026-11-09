@@ -1,23 +1,46 @@
-import { Building2, LayoutDashboard, Mail, Sprout, Warehouse } from 'lucide-react'
+import { LoaderCircle, Mail } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, Navigate } from 'react-router'
+import { useAuth } from '../auth/context'
+import { MagicLinkSent } from '../components/MagicLinkSent'
+import { buttonPrimary, inputClass } from '../components/ui'
 import { AuthLayout } from '../layouts/AuthLayout'
-import { InfoAlert, buttonPrimary, inputClass } from '../components/ui'
-
-const previews = [
-  { to: '/cliente', label: 'Panel del cliente', icon: Sprout },
-  { to: '/gestor', label: 'Panel del gestor de reciclaje', icon: Warehouse },
-  { to: '/admin', label: 'Panel del administrador', icon: Building2 },
-]
+import { authErrorMessage, sendMagicLink } from '../lib/magicLink'
+import { roleHome } from '../lib/users'
 
 export function Login() {
-  const [sent, setSent] = useState(false)
+  const { user, profile, loading } = useAuth()
+  const [email, setEmail] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(e: FormEvent) {
+  // Si ya tiene sesión, lo llevamos directo a su panel.
+  if (!loading && user) {
+    return <Navigate to={profile ? roleHome[profile.rol] : '/completar-perfil'} replace />
+  }
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    // Aún no hay conexión con Firebase: solo mostramos el aviso.
-    setSent(true)
+    setError(null)
+    setSending(true)
+    try {
+      await sendMagicLink(email)
+      setSentTo(email.trim().toLowerCase())
+    } catch (err) {
+      setError(authErrorMessage(err))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (sentTo) {
+    return (
+      <AuthLayout>
+        <MagicLinkSent email={sentTo} onReset={() => setSentTo(null)} />
+      </AuthLayout>
+    )
   }
 
   return (
@@ -34,22 +57,28 @@ export function Login() {
           </label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3.5 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input id="email" type="email" required autoComplete="email" placeholder="tucorreo@ejemplo.com" className={`${inputClass} pl-11`} />
+            <input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="tucorreo@ejemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={`${inputClass} pl-11`}
+            />
           </div>
         </div>
-        <button type="submit" className={`${buttonPrimary} w-full py-3`}>
-          Enviar enlace de acceso
+        {error && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <button type="submit" disabled={sending} className={`${buttonPrimary} w-full py-3`}>
+          {sending && <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />}
+          {sending ? 'Enviando…' : 'Enviar enlace de acceso'}
         </button>
       </form>
-
-      {sent && (
-        <div className="mt-5">
-          <InfoAlert title="El inicio de sesión aún no está activo">
-            El envío del enlace por correo se activará en la próxima etapa, cuando conectemos
-            Firebase. Por ahora no se envió ningún correo.
-          </InfoAlert>
-        </div>
-      )}
 
       <p className="mt-6 text-center text-sm text-slate-500">
         ¿No tienes cuenta?{' '}
@@ -57,29 +86,6 @@ export function Login() {
           Regístrate
         </Link>
       </p>
-
-      <div className="mt-10 rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-5">
-        <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-          <LayoutDashboard className="size-4" aria-hidden="true" />
-          Vista previa del diseño
-        </p>
-        <p className="mt-1 text-sm text-amber-800">
-          Acceso temporal para revisar los paneles mientras no exista el inicio de sesión. Se
-          quitará cuando conectemos Firebase.
-        </p>
-        <div className="mt-4 grid gap-2">
-          {previews.map((p) => (
-            <Link
-              key={p.to}
-              to={p.to}
-              className="flex items-center gap-3 rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-slate-700 ring-1 ring-amber-200 hover:ring-amber-400"
-            >
-              <p.icon className="size-4 text-brand-600" aria-hidden="true" />
-              {p.label}
-            </Link>
-          ))}
-        </div>
-      </div>
     </AuthLayout>
   )
 }

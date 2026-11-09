@@ -14,6 +14,7 @@ import {
 import { Link, Route, Routes } from 'react-router'
 import { DashboardLayout } from '../../layouts/DashboardLayout'
 import type { NavItem } from '../../layouts/DashboardLayout'
+import { useAuth } from '../../auth/context'
 import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard } from '../../components/ui'
 
 const nav: NavItem[] = [
@@ -32,9 +33,11 @@ const materials = [
 ]
 
 function Overview() {
+  const { profile } = useAuth()
+  const firstName = profile?.nombre.split(" ")[0]
   return (
     <>
-      <PageTitle title="¡Hola!" description="Este es el resumen de tu actividad en EcoPuntos." />
+      <PageTitle title={firstName ? `¡Hola, ${firstName}!` : "¡Hola!"} description="Este es el resumen de tu actividad en EcoPuntos." />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Puntos disponibles" icon={Coins} />
