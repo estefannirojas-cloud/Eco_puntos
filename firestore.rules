@@ -2,51 +2,201 @@ rules_version = '2';
 
 // Reglas de seguridad de EcoPuntos.
 // Deciden quién puede leer o escribir cada dato, aunque alguien intente saltarse la app.
+// Los EcoPuntos son beneficios promocionales y no representan dinero en efectivo.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ---------- Utilidades ----------
 
     function signedIn() {
       return request.auth != null;
     }
 
+    function userPath(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid);
+    }
+
+    function rewardPath(id) {
+      return /databases/$(database)/documents/recompensas/$(id);
+    }
+
+    function redemptionPath(code) {
+      return /databases/$(database)/documents/redenciones/$(code);
+    }
+
     function isAdmin() {
       return signedIn()
-        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'admin';
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.rol == 'admin';
     }
 
     function validText(value, maxLength) {
       return value is string && value.size() <= maxLength;
     }
 
-    // Un documento por persona, con el mismo id que su cuenta.
+    function requiredText(value, maxLength) {
+      return validText(value, maxLength) && value.size() > 0;
+    }
+
+    // Saldo de puntos (si la persona aún no tiene el campo, cuenta como 0).
+    function pointsOf(data) {
+      return data.get('puntos', 0);
+    }
+
+    // ---------- Usuarios ----------
+
     match /usuarios/{uid} {
       // Cada persona ve su propio perfil; el administrador ve todos.
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
 
-      // Al registrarse, solo puede crear SU perfil y siempre como "cliente".
+      // Al registrarse, solo puede crear SU perfil, siempre como "cliente" y sin puntos.
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['nombre', 'correo', 'celular', 'ciudad', 'rol', 'creadoEn'])
         && request.resource.data.rol == 'cliente'
         && request.resource.data.correo == request.auth.token.email
-        && validText(request.resource.data.nombre, 100) && request.resource.data.nombre.size() > 0
+        && requiredText(request.resource.data.nombre, 100)
         && validText(request.resource.data.celular, 20)
         && validText(request.resource.data.ciudad, 60)
         && request.resource.data.creadoEn == request.time;
 
-      // Puede cambiar sus datos personales, pero nunca su rol ni su correo.
-      // El administrador sí puede cambiar el rol (por ejemplo, nombrar gestores).
       allow update: if signedIn() && (
+        // 1) Puede cambiar sus datos personales, pero nunca su rol, su correo ni sus puntos.
         (request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'celular', 'ciudad'])
-          && validText(request.resource.data.nombre, 100) && request.resource.data.nombre.size() > 0
+          && requiredText(request.resource.data.nombre, 100)
           && validText(request.resource.data.celular, 20)
           && validText(request.resource.data.ciudad, 60))
-        || (isAdmin() && request.resource.data.rol in ['cliente', 'gestor', 'admin'])
+
+        // 2) Canje: sus puntos solo pueden BAJAR, y exactamente lo que cuesta una
+        //    solicitud de canje NUEVA que se crea en la misma operación.
+        || (request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['puntos', 'ultimaRedencion'])
+          && request.resource.data.ultimaRedencion is string
+          && !exists(redemptionPath(request.resource.data.ultimaRedencion))
+          && existsAfter(redemptionPath(request.resource.data.ultimaRedencion))
+          && getAfter(redemptionPath(request.resource.data.ultimaRedencion)).data.uid == uid
+          && request.resource.data.puntos == pointsOf(resource.data)
+               - getAfter(redemptionPath(request.resource.data.ultimaRedencion)).data.puntos
+          && request.resource.data.puntos >= 0)
+
+        // 3) El administrador puede cambiar roles y ajustar puntos (nunca a negativo).
+        || (isAdmin()
+          && request.resource.data.rol in ['cliente', 'gestor', 'admin']
+          && pointsOf(request.resource.data) is int
+          && pointsOf(request.resource.data) >= 0)
       );
 
       allow delete: if isAdmin();
+
+      // Historial de ajustes y devoluciones de puntos (solo lo escribe el administrador).
+      match /movimientos/{movementId} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['tipo', 'puntos', 'motivo', 'saldoResultante', 'autor', 'creadoEn'])
+          && request.resource.data.tipo in ['ajuste', 'reembolso']
+          && request.resource.data.puntos is int
+          && requiredText(request.resource.data.motivo, 200)
+          && request.resource.data.saldoResultante is int
+          && request.resource.data.saldoResultante >= 0
+          && request.resource.data.autor == request.auth.uid
+          && request.resource.data.creadoEn == request.time;
+      }
+    }
+
+    // ---------- Catálogo de recompensas ----------
+
+    function validReward(data) {
+      return data.keys().hasOnly([
+          'nombre', 'descripcion', 'empresa', 'imagenUrl', 'categoria', 'puntos', 'stock',
+          'activa', 'demo', 'creadoEn', 'actualizadoEn', 'ultimaRedencion'])
+        && requiredText(data.nombre, 80)
+        && validText(data.descripcion, 300)
+        && requiredText(data.empresa, 80)
+        && validText(data.imagenUrl, 500)
+        && data.categoria in ['descuento', 'bono', 'producto', 'especial']
+        && data.puntos is int && data.puntos > 0 && data.puntos <= 1000000
+        && data.stock is int && data.stock >= 0 && data.stock <= 100000
+        && data.activa is bool
+        && data.demo is bool
+        && data.creadoEn is timestamp
+        && data.actualizadoEn == request.time;
+    }
+
+    match /recompensas/{rewardId} {
+      // Cualquier persona con sesión puede ver el catálogo.
+      allow read: if signedIn();
+
+      // Solo el administrador crea y modifica recompensas.
+      allow create: if isAdmin() && validReward(request.resource.data)
+        && request.resource.data.creadoEn == request.time;
+      allow update: if isAdmin() && validReward(request.resource.data);
+
+      // Canje: un cliente solo puede restar UNA unidad de disponibilidad,
+      // y solo junto con una solicitud de canje NUEVA de esta misma recompensa.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'ultimaRedencion'])
+        && resource.data.stock > 0
+        && request.resource.data.stock == resource.data.stock - 1
+        && request.resource.data.ultimaRedencion is string
+        && !exists(redemptionPath(request.resource.data.ultimaRedencion))
+        && getAfter(redemptionPath(request.resource.data.ultimaRedencion)).data.recompensaId == rewardId;
+    }
+
+    // ---------- Solicitudes de canje (redenciones) ----------
+    // El id del documento ES el código único de redención (ej.: EP-7K3M-Q9XZ),
+    // así Firestore garantiza que no se repita.
+
+    function validStatusChange(before, after) {
+      return (before == 'pendiente' && after in ['aprobada', 'rechazada'])
+        || (before == 'aprobada' && after in ['entregada', 'rechazada']);
+    }
+
+    match /redenciones/{code} {
+      // Consultar un código: el dueño o el administrador.
+      // (resource == null permite comprobar que un código nuevo aún no existe.)
+      allow get: if signedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isAdmin());
+      allow list: if signedIn()
+        && (resource.data.uid == request.auth.uid || isAdmin());
+
+      // Crear una solicitud: solo en la MISMA operación que descuenta los puntos
+      // exactos y una unidad de la recompensa. Si algo no cuadra, se rechaza todo.
+      allow create: if signedIn()
+        && code.matches('^EP-[A-Z0-9]{4}-[A-Z0-9]{4}$')
+        && request.resource.data.keys().hasOnly([
+             'uid', 'correo', 'nombreCliente', 'recompensaId', 'recompensaNombre',
+             'empresa', 'puntos', 'estado', 'creadoEn', 'actualizadoEn'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.correo == request.auth.token.email
+        && request.resource.data.nombreCliente == get(userPath(request.auth.uid)).data.nombre
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.creadoEn == request.time
+        && request.resource.data.actualizadoEn == request.time
+        // La recompensa existe, está activa y tiene unidades.
+        && get(rewardPath(request.resource.data.recompensaId)).data.activa == true
+        && get(rewardPath(request.resource.data.recompensaId)).data.stock > 0
+        && request.resource.data.puntos == get(rewardPath(request.resource.data.recompensaId)).data.puntos
+        && request.resource.data.recompensaNombre == get(rewardPath(request.resource.data.recompensaId)).data.nombre
+        && request.resource.data.empresa == get(rewardPath(request.resource.data.recompensaId)).data.empresa
+        // Se descuenta una unidad de la recompensa...
+        && getAfter(rewardPath(request.resource.data.recompensaId)).data.stock
+             == get(rewardPath(request.resource.data.recompensaId)).data.stock - 1
+        // ...y exactamente los puntos, sin quedar en negativo.
+        && getAfter(userPath(request.auth.uid)).data.puntos
+             == pointsOf(get(userPath(request.auth.uid)).data) - request.resource.data.puntos
+        && getAfter(userPath(request.auth.uid)).data.puntos >= 0;
+
+      // Solo el administrador cambia el estado, siguiendo el orden permitido.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'nota', 'revisadoPor', 'actualizadoEn'])
+        && validStatusChange(resource.data.estado, request.resource.data.estado)
+        && validText(request.resource.data.get('nota', ''), 300)
+        && request.resource.data.revisadoPor == request.auth.uid
+        && request.resource.data.actualizadoEn == request.time;
+
+      // Las solicitudes nunca se borran: son el historial verificable.
+      allow delete: if false;
     }
 
     // Todo lo demás está cerrado hasta que lo definamos.

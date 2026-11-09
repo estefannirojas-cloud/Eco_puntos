@@ -31,7 +31,8 @@ export function Footer() {
       </div>
       <div className="border-t border-white/10">
         <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-brand-200/60 sm:px-6 lg:px-8">
-          © {CURRENT_YEAR} EcoPuntos. Todos los derechos reservados.
+          © {CURRENT_YEAR} EcoPuntos. Todos los derechos reservados. Los EcoPuntos son beneficios promocionales y no
+          representan dinero en efectivo.
         </p>
       </div>
     </footer>

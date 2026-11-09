@@ -11,7 +11,13 @@ export type UserProfile = {
   celular: string
   ciudad: string
   rol: Role
+  /** Saldo de EcoPuntos (si no existe, es 0). Son beneficios promocionales, no dinero. */
+  puntos?: number
   creadoEn: Timestamp | null
+}
+
+export function pointsOf(profile: Pick<UserProfile, 'puntos'> | null | undefined) {
+  return profile?.puntos ?? 0
 }
 
 export type ProfileInput = { nombre: string; celular: string; ciudad: string }
