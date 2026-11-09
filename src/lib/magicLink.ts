@@ -75,6 +75,8 @@ export function authErrorMessage(error: unknown) {
     case 'auth/invalid-action-code':
     case 'auth/expired-action-code':
       return 'Este enlace ya se usó o venció. Pide uno nuevo desde "Iniciar sesión".'
+    case 'auth/configuration-not-found':
+      return 'Authentication todavía no está activado en el proyecto de Firebase.'
     case 'auth/operation-not-allowed':
       return 'El acceso por enlace de correo no está activado en Firebase.'
     case 'auth/quota-exceeded':
