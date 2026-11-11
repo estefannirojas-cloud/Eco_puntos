@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Bell, Construction, LogOut, Menu, X } from 'lucide-react'
+import { Bell, LogOut, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { signOut } from 'firebase/auth'
@@ -99,11 +99,6 @@ export function DashboardLayout({ roleLabel, nav, children }: Props) {
           <Link to="/" className="lg:hidden" aria-label="EcoPuntos, ir al inicio">
             <LogoMark className="size-8 rounded-lg" />
           </Link>
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-            <Construction className="size-3.5" aria-hidden="true" />
-            <span className="sm:hidden">En construcción</span>
-            <span className="hidden sm:inline">Versión en construcción · reciclaje y puntos aún sin conectar</span>
-          </span>
           <div className="ml-auto flex items-center gap-3">
             <button type="button" className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Notificaciones">
               <Bell className="size-5" />

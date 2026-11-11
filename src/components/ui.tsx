@@ -17,7 +17,7 @@ export function NotConnectedNote({ children }: { children?: ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
       <PlugZap className="mt-0.5 size-4 shrink-0 text-slate-400" aria-hidden="true" />
-      <span>{children ?? 'Esta función se activará cuando conectemos la base de datos.'}</span>
+      <span>{children ?? 'Esta función se activará en una próxima etapa.'}</span>
     </p>
   )
 }
@@ -148,7 +148,7 @@ export function ComingSoon({
         <EmptyState
           icon={icon}
           title="Sección en construcción"
-          description="Esta sección ya tiene su lugar en la navegación. Su contenido se activará cuando conectemos la base de datos."
+          description="Esta sección ya tiene su lugar en la navegación y se construirá en una próxima etapa."
         />
         <div className="mt-6">
           <p className="text-sm font-semibold text-slate-700">Lo que podrás hacer aquí:</p>
