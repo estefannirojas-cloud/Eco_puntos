@@ -24,7 +24,7 @@ import { PublicHeader } from '../components/PublicHeader'
 import { DemoBadge } from '../components/ui'
 
 const steps: { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: UserPlus, title: 'Regístrate', text: 'Crea tu cuenta gratis con tu correo electrónico, sin contraseñas.' },
+  { icon: UserPlus, title: 'Regístrate', text: 'Crea tu cuenta gratis con tu correo electrónico y una contraseña.' },
   { icon: Recycle, title: 'Separa tus residuos', text: 'Clasifica plástico, papel, cartón, vidrio y metal limpios y secos.' },
   { icon: Truck, title: 'Entrégalos', text: 'Llévalos a un punto de acopio, donde un gestor pesa y registra tu entrega.' },
   { icon: Gift, title: 'Gana y canjea', text: 'Acumula EcoPuntos por cada kilo y cámbialos por beneficios.' },
@@ -108,7 +108,7 @@ export function Landing() {
                 </Link>
               </div>
               <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
-                {['Registro gratuito', 'Acceso sin contraseña', 'Desde el celular'].map((t) => (
+                {['Registro gratuito', 'Acceso seguro', 'Desde el celular'].map((t) => (
                   <li key={t} className="flex items-center gap-1.5">
                     <CircleCheck className="size-4 text-brand-500" aria-hidden="true" />
                     {t}

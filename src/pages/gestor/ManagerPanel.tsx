@@ -21,6 +21,7 @@ import { DeliveryStatusBadge, PointProfile } from '../../components/recycling'
 import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard, buttonDanger, buttonPrimary, buttonSecondary, inputClass } from '../../components/ui'
 import { DashboardLayout } from '../../layouts/DashboardLayout'
 import type { NavItem } from '../../layouts/DashboardLayout'
+import { ProfilePage } from "../ProfilePage"
 import { formatDate, formatPoints } from '../../lib/format'
 import {
   calculatePoints,
@@ -41,6 +42,7 @@ const nav: NavItem[] = [
   { to: '/gestor/recepciones', label: 'Recepciones', icon: ClipboardList },
   { to: '/gestor/clientes', label: 'Clientes', icon: Users },
   { to: '/gestor/punto-acopio', label: 'Mis puntos de acopio', icon: Warehouse },
+  { to: "/gestor/perfil", label: "Mi perfil", icon: UserRound },
 ]
 
 /** Puntos donde esta persona puede validar: los asignados (o todos, si es administrador). */
@@ -377,6 +379,7 @@ export function ManagerPanel() {
           }
         />
         <Route path="punto-acopio" element={<MyPointsPage />} />
+        <Route path="perfil" element={<ProfilePage />} />
       </Routes>
     </DashboardLayout>
   )

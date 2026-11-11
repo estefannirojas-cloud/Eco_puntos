@@ -6,6 +6,7 @@ import {
   Receipt,
   Recycle,
   Scale,
+  UserRound,
   Users,
   Warehouse,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ import { pointsOf, roleLabels } from '../../lib/users'
 import { MaterialsAdmin } from "./MaterialsAdmin"
 import { PointsAdmin } from "./PointsAdmin"
 import { StatsAdmin } from "./StatsAdmin"
+import { ProfilePage } from "../ProfilePage"
 import { RedemptionsAdmin } from './RedemptionsAdmin'
 import { RewardsAdmin } from './RewardsAdmin'
 import { UsersAdmin } from './UsersAdmin'
@@ -34,6 +36,7 @@ const nav: NavItem[] = [
   { to: "/admin/puntos-acopio", label: "Puntos de acopio", icon: MapPin },
   { to: "/admin/reportes", label: "Estadísticas", icon: ChartColumn },
   { to: "/admin/gestores", label: "Gestores", icon: Warehouse },
+  { to: "/admin/perfil", label: "Mi perfil", icon: UserRound },
 ]
 
 function Overview() {
@@ -159,6 +162,7 @@ export function AdminPanel() {
         <Route path="puntos-acopio" element={<PointsAdmin />} />
         <Route path="materiales" element={<MaterialsAdmin />} />
         <Route path="reportes" element={<StatsAdmin />} />
+        <Route path="perfil" element={<ProfilePage />} />
       </Routes>
     </DashboardLayout>
   )

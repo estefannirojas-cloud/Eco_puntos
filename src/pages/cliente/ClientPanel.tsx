@@ -16,7 +16,7 @@ import { Link, Route, Routes } from 'react-router'
 import { DashboardLayout } from '../../layouts/DashboardLayout'
 import type { NavItem } from '../../layouts/DashboardLayout'
 import { useAuth } from '../../auth/context'
-import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard } from '../../components/ui'
+import { Card, CardHeader, EmptyState, PageTitle, StatCard } from '../../components/ui'
 import { formatPoints } from '../../lib/format'
 import { availability, useRewards } from '../../lib/rewards'
 import { pointsOf } from '../../lib/users'
@@ -25,6 +25,7 @@ import { formatDate } from "../../lib/format"
 import { useMyDeliveries } from "../../lib/recycling"
 import type { Delivery } from "../../lib/recycling"
 import { MyDeliveries, PointsDirectory, RegisterDelivery } from "./ClientRecycling"
+import { ProfilePage } from "../ProfilePage"
 import { MyRedemptions } from './MyRedemptions'
 import { RewardsCatalog } from './RewardsCatalog'
 
@@ -174,17 +175,7 @@ export function ClientPanel() {
         <Route path="recompensas" element={<RewardsCatalog />} />
         <Route path="canjes" element={<MyRedemptions />} />
         <Route path="puntos-acopio" element={<PointsDirectory />} />
-        <Route
-          path="perfil"
-          element={
-            <ComingSoon
-              title="Mi perfil"
-              description="Tus datos personales y preferencias."
-              icon={UserRound}
-              features={['Actualizar nombre, celular y ciudad', 'Ver tu código de cliente', 'Configurar notificaciones', 'Cerrar sesión']}
-            />
-          }
-        />
+        <Route path="perfil" element={<ProfilePage />} />
       </Routes>
     </DashboardLayout>
   )

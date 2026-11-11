@@ -78,7 +78,22 @@ export function authErrorMessage(error: unknown) {
     case 'auth/configuration-not-found':
       return 'Authentication todavía no está activado en el proyecto de Firebase.'
     case 'auth/operation-not-allowed':
-      return 'El acceso por enlace de correo no está activado en Firebase.'
+      return 'Este método de acceso no está activado en Firebase.'
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'El correo o la contraseña no son correctos.'
+    case 'auth/email-already-in-use':
+      return 'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña.'
+    case 'auth/weak-password':
+    case 'auth/password-does-not-meet-requirements':
+      return 'La contraseña es muy débil. Usa al menos 8 caracteres.'
+    case 'auth/missing-password':
+      return 'Escribe tu contraseña.'
+    case 'auth/user-disabled':
+      return 'Esta cuenta está desactivada. Comunícate con EcoPuntos.'
+    case 'auth/requires-recent-login':
+      return 'Por seguridad, cierra sesión, vuelve a entrar y repite el cambio.'
     case 'auth/quota-exceeded':
       return 'Se alcanzó el límite diario de correos. Intenta de nuevo mañana.'
     case 'auth/too-many-requests':
