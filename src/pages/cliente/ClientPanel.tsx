@@ -20,12 +20,18 @@ import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard } from '.
 import { formatPoints } from '../../lib/format'
 import { availability, useRewards } from '../../lib/rewards'
 import { pointsOf } from '../../lib/users'
+import { DeliveryStatusBadge } from "../../components/recycling"
+import { formatDate } from "../../lib/format"
+import { useMyDeliveries } from "../../lib/recycling"
+import type { Delivery } from "../../lib/recycling"
+import { MyDeliveries, PointsDirectory, RegisterDelivery } from "./ClientRecycling"
 import { MyRedemptions } from './MyRedemptions'
 import { RewardsCatalog } from './RewardsCatalog'
 
 const nav: NavItem[] = [
   { to: '/cliente', label: 'Resumen', icon: LayoutDashboard, end: true },
-  { to: '/cliente/entregas', label: 'Mis entregas', icon: History },
+  { to: "/cliente/registrar", label: "Registrar entrega", icon: Recycle },
+  { to: "/cliente/entregas", label: "Mis entregas", icon: History },
   { to: '/cliente/recompensas', label: 'Recompensas', icon: Gift },
   { to: '/cliente/canjes', label: 'Mis canjes', icon: Receipt },
   { to: '/cliente/puntos-acopio', label: 'Puntos de acopio', icon: MapPin },
@@ -38,6 +44,40 @@ const materials = [
   { name: 'Vidrio', tip: 'Botellas y frascos sin tapa' },
   { name: 'Metal', tip: 'Latas de aluminio y acero' },
 ]
+
+function RecentDeliveries({ deliveries, loading }: { deliveries: Delivery[]; loading: boolean }) {
+  if (loading) return <div className="h-32 animate-pulse rounded-xl bg-slate-100" />
+  if (deliveries.length === 0) {
+    return (
+      <EmptyState
+        icon={Recycle}
+        title="Aún no tienes entregas"
+        description="Registra tu primera entrega y llévala a un punto de acopio. Cuando el gestor la valide, verás aquí los puntos ganados."
+        action={
+          <Link to="/cliente/registrar" className="text-sm font-semibold text-brand-700 hover:text-brand-800">
+            Registrar entrega →
+          </Link>
+        }
+      />
+    )
+  }
+  return (
+    <ul className="divide-y divide-slate-100">
+      {deliveries.map((d) => (
+        <li key={d.id} className="flex items-center justify-between gap-3 py-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium text-slate-900">{d.materialNombre} · {(d.pesoAceptado ?? d.pesoDeclarado).toLocaleString("es-CO")} kg</p>
+            <p className="truncate text-xs text-slate-500">{d.puntoNombre} · {formatDate(d.creadoEn)}</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <DeliveryStatusBadge status={d.estado} />
+            {d.estado === "validada" && <span className="text-xs font-semibold text-brand-700">+{formatPoints(d.puntos ?? 0)} pts</span>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 /** Muestra la recompensa más cercana según el saldo (con datos reales del catálogo). */
 function NextGoal({ balance }: { balance: number }) {
@@ -83,6 +123,11 @@ function NextGoal({ balance }: { balance: number }) {
 
 function Overview() {
   const { profile } = useAuth()
+  const { user } = useAuth()
+  const deliveries = useMyDeliveries(user?.uid)
+  const validated = deliveries.data.filter((d) => d.estado === "validada")
+  const totalKg = validated.reduce((s, d) => s + (d.pesoAceptado ?? 0), 0)
+  const pending = deliveries.data.filter((d) => d.estado === "pendiente").length
   const firstName = profile?.nombre.split(" ")[0]
   return (
     <>
@@ -90,24 +135,15 @@ function Overview() {
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Puntos disponibles" icon={Coins} value={formatPoints(pointsOf(profile))} hint="Beneficio promocional, no es dinero" />
-        <StatCard label="Kilos reciclados" icon={Scale} />
-        <StatCard label="Entregas realizadas" icon={Package} />
+        <StatCard label="Kilos reciclados" icon={Scale} value={deliveries.loading ? undefined : `${totalKg.toLocaleString("es-CO", { maximumFractionDigits: 2 })} kg`} hint="Entregas validadas" />
+        <StatCard label="Entregas realizadas" icon={Package} value={deliveries.loading ? undefined : String(validated.length)} hint={pending > 0 ? `${pending} por validar` : "Validadas por un gestor"} />
         <StatCard label="CO₂ evitado" icon={Leaf} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Actividad reciente" description="Tus últimas entregas registradas" icon={History} />
-          <EmptyState
-            icon={Recycle}
-            title="Aún no tienes entregas"
-            description="Cuando un gestor registre tu primera entrega en un punto de acopio, aparecerá aquí con los puntos ganados."
-            action={
-              <Link to="/cliente/puntos-acopio" className="text-sm font-semibold text-brand-700 hover:text-brand-800">
-                Ver puntos de acopio →
-              </Link>
-            }
-          />
+          <RecentDeliveries deliveries={deliveries.data.slice(0, 5)} loading={deliveries.loading} />
         </Card>
 
         <NextGoal balance={pointsOf(profile)} />
@@ -133,30 +169,11 @@ export function ClientPanel() {
     <DashboardLayout roleLabel="Cliente" nav={nav}>
       <Routes>
         <Route index element={<Overview />} />
-        <Route
-          path="entregas"
-          element={
-            <ComingSoon
-              title="Mis entregas"
-              description="Historial de materiales entregados y puntos obtenidos."
-              icon={History}
-              features={['Ver cada entrega con fecha, material y peso', 'Consultar los puntos ganados por entrega', 'Filtrar por mes o tipo de material', 'Descargar tu historial']}
-            />
-          }
-        />
+        <Route path="registrar" element={<RegisterDelivery />} />
+        <Route path="entregas" element={<MyDeliveries />} />
         <Route path="recompensas" element={<RewardsCatalog />} />
         <Route path="canjes" element={<MyRedemptions />} />
-        <Route
-          path="puntos-acopio"
-          element={
-            <ComingSoon
-              title="Puntos de acopio"
-              description="Lugares donde puedes entregar tus materiales."
-              icon={MapPin}
-              features={['Ver la dirección de cada punto', 'Consultar horarios de atención', 'Saber qué materiales recibe cada punto', 'Ver la ubicación en el mapa']}
-            />
-          }
-        />
+        <Route path="puntos-acopio" element={<PointsDirectory />} />
         <Route
           path="perfil"
           element={

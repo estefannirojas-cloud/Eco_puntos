@@ -6,7 +6,6 @@ import {
   Receipt,
   Recycle,
   Scale,
-  Settings2,
   Users,
   Warehouse,
 } from 'lucide-react'
@@ -14,9 +13,14 @@ import { Link, Route, Routes } from 'react-router'
 import { DashboardLayout } from '../../layouts/DashboardLayout'
 import type { NavItem } from '../../layouts/DashboardLayout'
 import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard } from '../../components/ui'
+import { BarList } from '../../components/recycling'
 import { formatDate, formatPoints } from '../../lib/format'
+import { useAllDeliveries } from '../../lib/recycling'
 import { useAllRedemptions, useUsers } from '../../lib/rewards'
 import { pointsOf, roleLabels } from '../../lib/users'
+import { MaterialsAdmin } from "./MaterialsAdmin"
+import { PointsAdmin } from "./PointsAdmin"
+import { StatsAdmin } from "./StatsAdmin"
 import { RedemptionsAdmin } from './RedemptionsAdmin'
 import { RewardsAdmin } from './RewardsAdmin'
 import { UsersAdmin } from './UsersAdmin'
@@ -26,10 +30,10 @@ const nav: NavItem[] = [
   { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
   { to: '/admin/recompensas', label: 'Recompensas', icon: Gift },
   { to: '/admin/canjes', label: 'Solicitudes de canje', icon: Receipt },
-  { to: '/admin/gestores', label: 'Gestores', icon: Warehouse },
-  { to: '/admin/puntos-acopio', label: 'Puntos de acopio', icon: MapPin },
-  { to: '/admin/materiales', label: 'Materiales y puntos', icon: Settings2 },
-  { to: '/admin/reportes', label: 'Reportes', icon: ChartColumn },
+  { to: "/admin/materiales", label: "Materiales", icon: Recycle },
+  { to: "/admin/puntos-acopio", label: "Puntos de acopio", icon: MapPin },
+  { to: "/admin/reportes", label: "Estadísticas", icon: ChartColumn },
+  { to: "/admin/gestores", label: "Gestores", icon: Warehouse },
 ]
 
 function Overview() {
@@ -39,6 +43,15 @@ function Overview() {
   const count = (n: number, loading: boolean) => (loading ? undefined : formatPoints(n))
   const recent = [...users.data].sort((a, b) => (b.creadoEn?.toMillis() ?? 0) - (a.creadoEn?.toMillis() ?? 0)).slice(0, 5)
   const pending = redemptions.data.filter((r) => r.estado === 'pendiente').length
+  const deliveries = useAllDeliveries()
+  const validated = deliveries.data.filter((d) => d.estado === 'validada')
+  const totalKg = validated.reduce((s, d) => s + (d.pesoAceptado ?? 0), 0)
+  const pendingDeliveries = deliveries.data.filter((d) => d.estado === 'pendiente').length
+  const byMaterial = [
+    ...validated.reduce((m, d) => m.set(d.materialNombre, (m.get(d.materialNombre) ?? 0) + (d.pesoAceptado ?? 0)), new Map<string, number>()),
+  ]
+    .map(([label, value]) => ({ label, value: Math.round(value * 100) / 100 }))
+    .sort((a, b) => b.value - a.value)
 
   return (
     <>
@@ -52,7 +65,12 @@ function Overview() {
           value={count(users.data.filter((u) => u.rol === 'gestor').length, users.loading)}
           hint="Con rol de gestor"
         />
-        <StatCard label="Kilos aprovechados" icon={Scale} />
+        <StatCard
+          label="Kilos aprovechados"
+          icon={Scale}
+          value={deliveries.loading ? undefined : `${totalKg.toLocaleString('es-CO', { maximumFractionDigits: 2 })} kg`}
+          hint={pendingDeliveries > 0 ? `${pendingDeliveries} entregas por validar` : 'Entregas validadas'}
+        />
         <StatCard label="Canjes pendientes" icon={Receipt} value={count(pending, redemptions.loading)} hint="Esperando revisión" />
       </div>
 
@@ -92,12 +110,27 @@ function Overview() {
         </Card>
 
         <Card>
-          <CardHeader title="Material por tipo" icon={ChartColumn} />
-          <EmptyState
-            icon={Recycle}
-            title="Sin datos para graficar"
-            description="Aquí verás cuántos kilos se han recibido de cada material cuando se registren entregas."
+          <CardHeader
+            title="Material por tipo"
+            description="Kilogramos validados"
+            icon={ChartColumn}
+            action={
+              <Link to="/admin/reportes" className="text-sm font-semibold text-brand-700 hover:text-brand-800">
+                Ver estadísticas →
+              </Link>
+            }
           />
+          {deliveries.loading ? (
+            <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+          ) : byMaterial.length === 0 ? (
+            <EmptyState
+              icon={Recycle}
+              title="Sin datos para graficar"
+              description="Aquí verás cuántos kilos se han recibido de cada material cuando se validen entregas."
+            />
+          ) : (
+            <BarList data={byMaterial.slice(0, 6)} unit="kg" />
+          )}
         </Card>
       </div>
     </>
@@ -123,39 +156,9 @@ export function AdminPanel() {
             />
           }
         />
-        <Route
-          path="puntos-acopio"
-          element={
-            <ComingSoon
-              title="Puntos de acopio"
-              description="Lugares habilitados para recibir material."
-              icon={MapPin}
-              features={['Crear y editar puntos de acopio', 'Definir horarios y materiales aceptados', 'Activar o pausar un punto', 'Ver el volumen recibido por punto']}
-            />
-          }
-        />
-        <Route
-          path="materiales"
-          element={
-            <ComingSoon
-              title="Materiales y puntos"
-              description="Reglas para calcular los EcoPuntos."
-              icon={Settings2}
-              features={['Definir los materiales aceptados', 'Fijar cuántos puntos vale cada kilo', 'Establecer pesos mínimos', 'Guardar el historial de cambios de tarifas']}
-            />
-          }
-        />
-        <Route
-          path="reportes"
-          element={
-            <ComingSoon
-              title="Reportes"
-              description="Indicadores de impacto del programa."
-              icon={ChartColumn}
-              features={['Kilos aprovechados por mes y material', 'Participación por ciudad', 'Estimación de CO₂ evitado', 'Exportar reportes a Excel o PDF']}
-            />
-          }
-        />
+        <Route path="puntos-acopio" element={<PointsAdmin />} />
+        <Route path="materiales" element={<MaterialsAdmin />} />
+        <Route path="reportes" element={<StatsAdmin />} />
       </Routes>
     </DashboardLayout>
   )

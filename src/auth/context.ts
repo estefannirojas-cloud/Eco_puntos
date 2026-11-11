@@ -18,3 +18,9 @@ export const AuthContext = createContext<AuthState>({ user: null, profile: null,
 export function useAuth() {
   return useContext(AuthContext)
 }
+
+/** Quién hace un cambio (para dejarlo registrado como responsable). */
+export function useActor() {
+  const { user, profile } = useContext(AuthContext)
+  return user ? { uid: user.uid, nombre: profile?.nombre ?? user.email ?? '' } : null
+}

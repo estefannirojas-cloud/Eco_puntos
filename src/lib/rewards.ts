@@ -139,7 +139,7 @@ export function generateRedemptionCode() {
 
 type LiveState<T> = { data: T[]; loading: boolean; error: string | null }
 
-function useLiveQuery<T>(key: string | null, build: () => Query<DocumentData>, map: (d: QueryDocumentSnapshot) => T) {
+export function useLiveQuery<T>(key: string | null, build: () => Query<DocumentData>, map: (d: QueryDocumentSnapshot) => T) {
   const [state, setState] = useState<LiveState<T> & { key: string | null }>({ data: [], loading: true, error: null, key })
 
   useEffect(() => {

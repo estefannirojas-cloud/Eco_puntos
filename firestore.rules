@@ -30,6 +30,33 @@ service cloud.firestore {
         && get(userPath(request.auth.uid)).data.rol == 'admin';
     }
 
+    function isGestor() {
+      return signedIn()
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.rol == 'gestor';
+    }
+
+    // Personal que valida entregas: gestores de reciclaje y administradores.
+    function isStaff() {
+      return isAdmin() || isGestor();
+    }
+
+    function materialPath(id) {
+      return /databases/$(database)/documents/materiales/$(id);
+    }
+
+    function pointPath(id) {
+      return /databases/$(database)/documents/puntosAcopio/$(id);
+    }
+
+    function deliveryPath(id) {
+      return /databases/$(database)/documents/entregas/$(id);
+    }
+
+    function tariffPath(id) {
+      return /databases/$(database)/documents/historialTarifas/$(id);
+    }
+
     function validText(value, maxLength) {
       return value is string && value.size() <= maxLength;
     }
@@ -47,7 +74,8 @@ service cloud.firestore {
 
     match /usuarios/{uid} {
       // Cada persona ve su propio perfil; el administrador ve todos.
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // El gestor también puede consultarlos para registrar entregas a nombre de un cliente.
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
 
       // Al registrarse, solo puede crear SU perfil, siempre como "cliente" y sin puntos.
       allow create: if signedIn()
@@ -80,7 +108,19 @@ service cloud.firestore {
                - getAfter(redemptionPath(request.resource.data.ultimaRedencion)).data.puntos
           && request.resource.data.puntos >= 0)
 
-        // 3) El administrador puede cambiar roles y ajustar puntos (nunca a negativo).
+        // 3) Entrega validada: el gestor o administrador suma EXACTAMENTE los puntos de
+        //    una entrega que pasa a "validada" en esta misma operación (y que antes no lo estaba).
+        || (isStaff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['puntos', 'ultimaEntrega'])
+          && request.resource.data.ultimaEntrega is string
+          && getAfter(deliveryPath(request.resource.data.ultimaEntrega)).data.estado == 'validada'
+          && getAfter(deliveryPath(request.resource.data.ultimaEntrega)).data.uid == uid
+          && (!exists(deliveryPath(request.resource.data.ultimaEntrega))
+              || get(deliveryPath(request.resource.data.ultimaEntrega)).data.estado == 'pendiente')
+          && request.resource.data.puntos == pointsOf(resource.data)
+               + getAfter(deliveryPath(request.resource.data.ultimaEntrega)).data.puntos)
+
+        // 4) El administrador puede cambiar roles y ajustar puntos (nunca a negativo).
         || (isAdmin()
           && request.resource.data.rol in ['cliente', 'gestor', 'admin']
           && pointsOf(request.resource.data) is int
@@ -196,6 +236,262 @@ service cloud.firestore {
         && request.resource.data.actualizadoEn == request.time;
 
       // Las solicitudes nunca se borran: son el historial verificable.
+      allow delete: if false;
+    }
+
+    // ---------- Materiales reciclables ----------
+
+    function validMaterial(d) {
+      return d.keys().hasOnly([
+          'nombre', 'categoria', 'descripcion', 'imagenUrl', 'unidad', 'activo', 'condiciones',
+          'observaciones', 'pesoMinimo', 'puntosPorKg', 'tieneMovimientos', 'demo',
+          'creadoEn', 'actualizadoEn', 'actualizadoPor', 'ultimoCambioTarifa'])
+        && requiredText(d.nombre, 60)
+        && d.categoria in ['plastico', 'papel_carton', 'vidrio', 'metales', 'otros']
+        && validText(d.descripcion, 300)
+        && validText(d.imagenUrl, 500)
+        && d.unidad == 'kg'
+        && d.activo is bool
+        && validText(d.condiciones, 500)
+        && validText(d.observaciones, 300)
+        && d.pesoMinimo is number && d.pesoMinimo >= 0 && d.pesoMinimo <= 1000
+        && d.puntosPorKg is number && d.puntosPorKg >= 0 && d.puntosPorKg <= 10000
+        && d.tieneMovimientos is bool
+        && d.demo is bool
+        && d.creadoEn is timestamp
+        && d.actualizadoEn == request.time
+        && d.actualizadoPor == request.auth.uid;
+    }
+
+    // Todo cambio de tarifa debe dejar un registro NUEVO en el historial, en la misma operación.
+    function tariffChangeLogged(materialId) {
+      return request.resource.data.ultimoCambioTarifa is string
+        && !exists(tariffPath(request.resource.data.ultimoCambioTarifa))
+        && getAfter(tariffPath(request.resource.data.ultimoCambioTarifa)).data.materialId == materialId
+        && getAfter(tariffPath(request.resource.data.ultimoCambioTarifa)).data.tarifaAnterior == resource.data.puntosPorKg
+        && getAfter(tariffPath(request.resource.data.ultimoCambioTarifa)).data.tarifaNueva == request.resource.data.puntosPorKg;
+    }
+
+    match /materiales/{materialId} {
+      allow read: if signedIn();
+
+      allow create: if isAdmin()
+        && validMaterial(request.resource.data)
+        && request.resource.data.creadoEn == request.time
+        && request.resource.data.tieneMovimientos == false;
+
+      allow update: if isAdmin()
+        && validMaterial(request.resource.data)
+        && request.resource.data.creadoEn == resource.data.creadoEn
+        // Una vez tiene movimientos, la marca no se puede quitar.
+        && (request.resource.data.tieneMovimientos == resource.data.tieneMovimientos
+            || request.resource.data.tieneMovimientos == true)
+        && (request.resource.data.puntosPorKg == resource.data.puntosPorKg
+            || tariffChangeLogged(materialId));
+
+      // Al registrar una entrega se marca que el material ya tiene movimientos.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tieneMovimientos'])
+        && request.resource.data.tieneMovimientos == true;
+
+      // Solo se puede eliminar si nunca se usó; si no, se conserva su historial.
+      allow delete: if isAdmin() && resource.data.tieneMovimientos == false;
+    }
+
+    // Historial de tarifas: solo se agrega, nunca se modifica ni se borra.
+    match /historialTarifas/{changeId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+             'materialId', 'materialNombre', 'tarifaAnterior', 'tarifaNueva',
+             'motivo', 'autor', 'autorNombre', 'creadoEn'])
+        && request.resource.data.materialId is string
+        && requiredText(request.resource.data.materialNombre, 60)
+        && (request.resource.data.tarifaAnterior == null || request.resource.data.tarifaAnterior is number)
+        && request.resource.data.tarifaNueva is number
+        && requiredText(request.resource.data.motivo, 200)
+        && request.resource.data.autor == request.auth.uid
+        && validText(request.resource.data.autorNombre, 100)
+        && request.resource.data.creadoEn == request.time;
+      allow update, delete: if false;
+    }
+
+    // ---------- Puntos de acopio ----------
+
+    function validCoordinate(value, limit) {
+      return value == null || (value is number && value >= -limit && value <= limit);
+    }
+
+    function validPoint(d) {
+      return d.keys().hasOnly([
+          'nombre', 'tipo', 'direccion', 'barrio', 'municipio', 'responsable', 'telefono',
+          'correo', 'descripcion', 'fotoUrl', 'lat', 'lng', 'estado', 'horario',
+          'observacionesHorario', 'materiales', 'gestores', 'creadoEn', 'actualizadoEn',
+          'actualizadoPor', 'ultimoCambio'])
+        && requiredText(d.nombre, 100)
+        && d.tipo in ['universidad', 'colegio', 'conjunto', 'centro_comercial', 'empresa',
+                      'supermercado', 'institucion_publica', 'otro']
+        && requiredText(d.direccion, 150)
+        && validText(d.barrio, 80)
+        && requiredText(d.municipio, 80)
+        && validText(d.responsable, 100)
+        && validText(d.telefono, 30)
+        && validText(d.correo, 120)
+        && validText(d.descripcion, 500)
+        && validText(d.fotoUrl, 500)
+        && validCoordinate(d.lat, 90)
+        && validCoordinate(d.lng, 180)
+        && d.estado in ['activo', 'pausado', 'inactivo']
+        && d.horario is map
+        && validText(d.observacionesHorario, 300)
+        && d.materiales is map && d.materiales.size() <= 60
+        && d.gestores is list && d.gestores.size() <= 30
+        && d.creadoEn is timestamp
+        && d.actualizadoEn == request.time
+        && d.actualizadoPor == request.auth.uid;
+    }
+
+    // Toda creación o modificación debe dejar un registro NUEVO en su historial.
+    function pointChangeLogged(pointId) {
+      return request.resource.data.ultimoCambio is string
+        && !exists(/databases/$(database)/documents/puntosAcopio/$(pointId)/cambios/$(request.resource.data.ultimoCambio))
+        && existsAfter(/databases/$(database)/documents/puntosAcopio/$(pointId)/cambios/$(request.resource.data.ultimoCambio));
+    }
+
+    match /puntosAcopio/{pointId} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && validPoint(request.resource.data)
+        && request.resource.data.creadoEn == request.time
+        && pointChangeLogged(pointId);
+      allow update: if isAdmin()
+        && validPoint(request.resource.data)
+        && request.resource.data.creadoEn == resource.data.creadoEn
+        && pointChangeLogged(pointId);
+      // No se borran: se marcan como "inactivo" para conservar su historial.
+      allow delete: if false;
+
+      match /cambios/{changeId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['accion', 'detalle', 'autor', 'autorNombre', 'creadoEn'])
+          && requiredText(request.resource.data.accion, 60)
+          && requiredText(request.resource.data.detalle, 2000)
+          && request.resource.data.autor == request.auth.uid
+          && validText(request.resource.data.autorNombre, 100)
+          && request.resource.data.creadoEn == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- Entregas de material ----------
+    // El id del documento lo genera la app una sola vez por formulario:
+    // si la misma entrega se envía dos veces, Firestore no deja crearla de nuevo.
+
+    function baseDeliveryKeys() {
+      return ['uid', 'clienteNombre', 'clienteCorreo', 'puntoId', 'puntoNombre', 'puntoTipo',
+              'materialId', 'materialNombre', 'materialCategoria', 'pesoDeclarado',
+              'estado', 'origen', 'creadoEn'];
+    }
+
+    function validationKeys() {
+      return ['pesoAceptado', 'tarifaAplicada', 'pesoMinimoAplicado', 'puntos',
+              'validadoPor', 'validadorNombre', 'validadoEn'];
+    }
+
+    // El punto está activo, el material está activo y el punto lo acepta.
+    function acceptedHere(d) {
+      return get(pointPath(d.puntoId)).data.estado == 'activo'
+        && get(materialPath(d.materialId)).data.activo == true
+        && d.materialId in get(pointPath(d.puntoId)).data.materiales;
+    }
+
+    // Al crear la entrega, los nombres guardados coinciden con los actuales.
+    function namesMatch(d) {
+      return d.puntoNombre == get(pointPath(d.puntoId)).data.nombre
+        && d.materialNombre == get(materialPath(d.materialId)).data.nombre;
+    }
+
+    function validDeclaredWeight(d) {
+      return d.pesoDeclarado is number
+        && d.pesoDeclarado > 0
+        && d.pesoDeclarado <= 10000;
+    }
+
+    // Puntos = kg aceptados × tarifa vigente, redondeado hacia abajo.
+    function validValidation(d) {
+      return d.estado == 'validada'
+        && d.pesoAceptado is number
+        && d.pesoAceptado <= 10000
+        && d.pesoAceptado >= get(materialPath(d.materialId)).data.pesoMinimo
+        && d.pesoMinimoAplicado == get(materialPath(d.materialId)).data.pesoMinimo
+        && d.tarifaAplicada == get(materialPath(d.materialId)).data.puntosPorKg
+        && d.puntos == math.floor(d.pesoAceptado * d.tarifaAplicada + 0.000001)
+        && d.validadoPor == request.auth.uid
+        && validText(d.validadorNombre, 100)
+        && d.validadoEn == request.time
+        && (isAdmin() || (isGestor() && request.auth.uid in get(pointPath(d.puntoId)).data.gestores));
+    }
+
+    // El saldo del cliente sube exactamente los puntos de esta entrega.
+    function clientCredited(d, deliveryId) {
+      return getAfter(userPath(d.uid)).data.ultimaEntrega == deliveryId
+        && getAfter(userPath(d.uid)).data.puntos == pointsOf(get(userPath(d.uid)).data) + d.puntos;
+    }
+
+    match /entregas/{deliveryId} {
+      allow get: if signedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isStaff());
+      allow list: if signedIn()
+        && (resource.data.uid == request.auth.uid || isStaff());
+
+      // 1) El cliente pre-registra su entrega: queda pendiente y SIN puntos.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(baseDeliveryKeys())
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.clienteCorreo == request.auth.token.email
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.origen == 'cliente'
+        && request.resource.data.creadoEn == request.time
+        && validDeclaredWeight(request.resource.data)
+        && request.resource.data.pesoDeclarado >= get(materialPath(request.resource.data.materialId)).data.pesoMinimo
+        && acceptedHere(request.resource.data)
+        && namesMatch(request.resource.data);
+
+      // 2) El gestor registra y valida la entrega en el punto, y acredita los puntos.
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(baseDeliveryKeys().concat(validationKeys()))
+        && exists(userPath(request.resource.data.uid))
+        && request.resource.data.clienteCorreo == get(userPath(request.resource.data.uid)).data.correo
+        && request.resource.data.origen == 'gestor'
+        && request.resource.data.creadoEn == request.time
+        && validDeclaredWeight(request.resource.data)
+        && request.resource.data.pesoAceptado == request.resource.data.pesoDeclarado
+        && acceptedHere(request.resource.data)
+        && namesMatch(request.resource.data)
+        && validValidation(request.resource.data)
+        && clientCredited(request.resource.data, deliveryId);
+
+      // 3) El gestor valida una entrega pendiente (una sola vez) y acredita los puntos.
+      allow update: if isStaff()
+        && resource.data.estado == 'pendiente'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(validationKeys().concat(['estado']))
+        && acceptedHere(request.resource.data)
+        && validValidation(request.resource.data)
+        && clientCredited(request.resource.data, deliveryId);
+
+      // 4) El gestor rechaza una entrega pendiente (sin puntos).
+      allow update: if isStaff()
+        && resource.data.estado == 'pendiente'
+        && request.resource.data.estado == 'rechazada'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'motivoRechazo', 'validadoPor', 'validadorNombre', 'validadoEn'])
+        && requiredText(request.resource.data.motivoRechazo, 300)
+        && request.resource.data.validadoPor == request.auth.uid
+        && validText(request.resource.data.validadorNombre, 100)
+        && request.resource.data.validadoEn == request.time
+        && (isAdmin() || request.auth.uid in get(pointPath(resource.data.puntoId)).data.gestores);
+
+      // Las entregas nunca se borran: son el historial verificable.
       allow delete: if false;
     }
 
