@@ -13,12 +13,13 @@ import {
 import { Link, Route, Routes } from 'react-router'
 import { DashboardLayout } from '../../layouts/DashboardLayout'
 import type { NavItem } from '../../layouts/DashboardLayout'
-import { Card, CardHeader, ComingSoon, EmptyState, PageTitle, StatCard } from '../../components/ui'
+import { Card, CardHeader, EmptyState, PageTitle, StatCard } from '../../components/ui'
 import { BarList } from '../../components/recycling'
 import { formatDate, formatPoints } from '../../lib/format'
 import { useAllDeliveries } from '../../lib/recycling'
 import { useAllRedemptions, useUsers } from '../../lib/rewards'
 import { pointsOf, roleLabels } from '../../lib/users'
+import { ManagersAdmin } from "./ManagersAdmin"
 import { MaterialsAdmin } from "./MaterialsAdmin"
 import { PointsAdmin } from "./PointsAdmin"
 import { StatsAdmin } from "./StatsAdmin"
@@ -148,17 +149,7 @@ export function AdminPanel() {
         <Route path="usuarios" element={<UsersAdmin />} />
         <Route path="recompensas" element={<RewardsAdmin />} />
         <Route path="canjes" element={<RedemptionsAdmin />} />
-        <Route
-          path="gestores"
-          element={
-            <ComingSoon
-              title="Gestores"
-              description="Responsables de los puntos de acopio."
-              icon={Warehouse}
-              features={['Invitar nuevos gestores por correo', 'Asignar un gestor a un punto de acopio', 'Revisar la actividad de cada gestor', 'Retirar permisos']}
-            />
-          }
-        />
+        <Route path="gestores" element={<ManagersAdmin />} />
         <Route path="puntos-acopio" element={<PointsAdmin />} />
         <Route path="materiales" element={<MaterialsAdmin />} />
         <Route path="reportes" element={<StatsAdmin />} />

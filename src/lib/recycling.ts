@@ -720,3 +720,29 @@ export function mapsLink(point: Pick<CollectionPoint, 'lat' | 'lng' | 'direccion
   if (point.lat != null && point.lng != null) return `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${point.direccion}, ${point.municipio}`)}`
 }
+
+// =====================================================================
+// Gestores
+// =====================================================================
+
+/** Cambia la lista de gestores de un punto (queda en el historial del punto). */
+export function setPointManagers(actor: Actor, point: CollectionPoint, gestores: string[], materialNames: Record<string, string>) {
+  const { id: _id, creadoEn: _c, actualizadoEn: _a, ...rest } = point
+  return savePoint(actor, point, { ...rest, gestores }, materialNames)
+}
+
+/** Asigna a un gestor exactamente los puntos indicados (agrega y retira donde haga falta). */
+export async function assignManagerToPoints(
+  actor: Actor,
+  managerUid: string,
+  pointIds: string[],
+  allPoints: CollectionPoint[],
+  materialNames: Record<string, string>,
+) {
+  const wanted = new Set(pointIds)
+  for (const p of allPoints) {
+    const has = (p.gestores ?? []).includes(managerUid)
+    if (wanted.has(p.id) && !has) await setPointManagers(actor, p, [...(p.gestores ?? []), managerUid], materialNames)
+    if (!wanted.has(p.id) && has) await setPointManagers(actor, p, p.gestores.filter((g) => g !== managerUid), materialNames)
+  }
+}
